@@ -2,12 +2,136 @@
 <html lang="en">
 <head>
     <script src="https://npmcdn.com/babel-core@5.8.38/browser.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
     <script type="text/babel" >
         "use strict";
-    
+
+
+        const drawables = {};
+
+        const drawTimes = {};
+
+
+        const redraw = (ctx) =>{
+          ctx.clearRect(0,0,ctx.canvas.width, ctx.canvas.height);
+          
+          let keys = Object.keys(drawTimes);
+          keys.sort( (a,b) => {return a-b;});
+          
+          for(let i = 0; i < keys.length; i++){
+            const draw = drawables[drawTimes[keys[i]]];
+            
+            ctx.fillStyle = draw.color;
+            ctx.fillRect(draw.x,draw.y,50,50);
+          }
+        };
+
+        const onMove = (sock,ctx) =>{
+          const socket = sock;
+          
+          socket.on('move', (data) =>{
+            if(drawables[data.name]){
+              let time = drawables[data.name].time;
+              delete drawTimes[time];
+            }
+            
+            drawables[data.name] = data;
+            drawables[data.name].color = "red";
+            
+            drawTimes[data.time] = data.name;
+            redraw(ctx);
+          });
+        };
+
+
+        const onRemove = (sock, ctx) =>{
+          const socket = sock;
+          
+          socket.on('remove', (data) =>{
+            delete drawTimes[drawables[data.name].time];
+            delete drawables[data.name];
+            
+            redraw(ctx);
+          });
+        };
+
+        const moveRand = (ctx) =>{
+          const draw = {};
+          draw.x = Math.floor(Math.random()*(ctx.canvas.width - 60) + 10);
+          draw.y = Math.floor(Math.random()*(ctx.canvas.height - 60) + 10);
+          draw.time = new Date().getTime();
+          
+          return draw;
+        };
+
+        const clickHandler = (e, ctx, sock) =>{
+          const socket = sock;
+          const draw = moveRand(ctx);
+          
+          
+          
+          socket.emit('move', draw);
+          
+          draw.color = "black";
+          
+          let time = drawables["me"].time;
+          
+          delete drawTimes[time];//should not do this for real
+          drawTimes[draw.time] = "me";
+          drawables["me"] = draw;
+          redraw(ctx);
+        };
+        
+        const bump = (sock) =>{
+          const socket = sock;
+          console.log("bump");
+          let d = {};
+          d.x =  drawables["me"].x;
+          d.y =  drawables["me"].y;
+          d.time =  drawables["me"].time;
+          socket.emit('move', d);
+        };
+
+        const onBump = (sock) =>{
+          const socket = sock;
+          socket.on('bump', () => bump(socket));
+        };
+        
+        const init = () =>{
+          const canvas = document.querySelector("canvas");
+          const button = document.querySelector("button");
+          canvas.width = 500;
+          canvas.height = 500;
+          canvas.style.border = "1px solid blue";
+          const ctx = canvas.getContext('2d');
+          
+          const draw = moveRand(ctx);
+          draw.color = "black";
+          drawables["me"] = draw;
+          drawTimes[draw.time] = "me";
+          
+          
+          const socket = io.connect();
+          
+          socket.on("connect", () =>{
+            bump(socket);
+          });
+          
+          
+        
+          onMove(socket,ctx);
+          onRemove(socket,ctx);
+          onBump(socket);
+          
+          button.addEventListener("click", (e) =>{ clickHandler(e,ctx, socket);});
+          redraw(ctx);
+        };
+
+        window.onload = init; 
     </script>
 </head>
 <body>
-
+<canvas></canvas>
+<button type="button">Random Move</button>
 </body>
 </html>
